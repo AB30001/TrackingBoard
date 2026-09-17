@@ -1,10 +1,12 @@
 (function () {
   "use strict";
 
-  var state = { range: 7, daily: [], site: "", sites: [] };
+  var state = { range: 7, daily: [], site: "" };
 
   var els = {
-    siteSelect: document.getElementById("site-select"),
+    chartTitle: document.getElementById("chart-title"),
+    overviewBody: document.getElementById("overview-body"),
+    refreshBtn: document.getElementById("refresh-btn"),
     statTotal: document.getElementById("stat-total"),
     statAvg: document.getElementById("stat-avg"),
     statTop: document.getElementById("stat-top"),
@@ -256,20 +258,102 @@
     });
   }
 
-  function populateSiteSelect(sites, selected) {
-    if (!sites || !sites.length) return;
-    var sameList = state.sites.length === sites.length && state.sites.every(function (s, i) { return s === sites[i]; });
-    if (!sameList) {
-      els.siteSelect.innerHTML = "";
-      sites.forEach(function (code) {
-        var opt = document.createElement("option");
-        opt.value = code;
-        opt.textContent = code + ".goatcounter.com";
-        els.siteSelect.appendChild(opt);
-      });
-      state.sites = sites;
+  function setActiveOverviewRow(site) {
+    var rows = els.overviewBody.querySelectorAll(".overview-body-row");
+    rows.forEach(function (row) {
+      row.classList.toggle("active", row.dataset.site === site);
+    });
+  }
+
+  function renderOverview(rows) {
+    els.overviewBody.innerHTML = "";
+    if (!rows || !rows.length) {
+      var empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No sites configured";
+      els.overviewBody.appendChild(empty);
+      return;
     }
-    els.siteSelect.value = selected;
+
+    rows.forEach(function (row) {
+      var el = document.createElement("div");
+      el.className = "overview-row overview-body-row";
+      el.dataset.site = row.site;
+      el.tabIndex = 0;
+      el.setAttribute("role", "button");
+
+      var siteCell = document.createElement("div");
+      siteCell.className = "overview-site";
+      siteCell.textContent = row.domain || row.site;
+      var sub = document.createElement("span");
+      sub.className = "overview-domain";
+      sub.textContent = row.site + ".goatcounter.com";
+      siteCell.appendChild(sub);
+      el.appendChild(siteCell);
+
+      var pageviewsCell = document.createElement("div");
+      if (row.totalError) {
+        pageviewsCell.className = "overview-error";
+        pageviewsCell.textContent = "Error";
+      } else {
+        pageviewsCell.className = "overview-value";
+        pageviewsCell.textContent = formatCompact(row.total || 0);
+      }
+      el.appendChild(pageviewsCell);
+
+      var drCell = document.createElement("div");
+      if (row.offline) {
+        drCell.className = "overview-offline";
+        drCell.textContent = "Offline";
+      } else if (row.drError) {
+        drCell.className = "overview-error";
+        drCell.textContent = "Error";
+      } else if (row.dr === null || row.dr === undefined) {
+        drCell.className = "overview-offline";
+        drCell.textContent = "—";
+      } else {
+        drCell.className = "overview-value";
+        drCell.textContent = Math.round(row.dr);
+      }
+      el.appendChild(drCell);
+
+      function select() {
+        state.site = row.site;
+        setActiveOverviewRow(row.site);
+        loadData(state.range, row.site);
+      }
+      el.addEventListener("click", select);
+      el.addEventListener("keydown", function (evt) {
+        if (evt.key === "Enter" || evt.key === " ") {
+          evt.preventDefault();
+          select();
+        }
+      });
+
+      els.overviewBody.appendChild(el);
+    });
+
+    setActiveOverviewRow(state.site);
+  }
+
+  function loadOverview() {
+    return fetch("/.netlify/functions/overview")
+      .then(function (res) {
+        return res.json().then(function (body) {
+          if (!res.ok) throw new Error(body.error || "Request failed");
+          return body;
+        });
+      })
+      .then(function (data) {
+        renderOverview(data.rows);
+        if (!state.site && data.rows && data.rows.length) {
+          state.site = data.rows[0].site;
+          setActiveOverviewRow(state.site);
+        }
+      })
+      .catch(function (err) {
+        showError("Couldn't load site overview: " + err.message);
+      });
   }
 
   function loadData(range, site) {
@@ -280,7 +364,7 @@
     var url = "/.netlify/functions/stats?range=" + range;
     if (site) url += "&site=" + encodeURIComponent(site);
 
-    fetch(url)
+    return fetch(url)
       .then(function (res) {
         return res.json().then(function (body) {
           if (!res.ok) throw new Error(body.error || "Request failed");
@@ -289,7 +373,8 @@
       })
       .then(function (data) {
         state.site = data.site || "";
-        populateSiteSelect(data.sites, state.site);
+        setActiveOverviewRow(state.site);
+        els.chartTitle.textContent = "Pageviews over time — " + state.site;
         renderKPIs(data);
         renderChart(data.daily);
         renderBarList(data.topPages);
@@ -302,19 +387,28 @@
       });
   }
 
+  function refreshAll() {
+    els.refreshBtn.classList.add("spinning");
+    els.refreshBtn.disabled = true;
+    Promise.all([loadOverview(), loadData(state.range, state.site)]).finally(function () {
+      els.refreshBtn.classList.remove("spinning");
+      els.refreshBtn.disabled = false;
+    });
+  }
+
   els.filterRow.addEventListener("click", function (evt) {
     var btn = evt.target.closest(".filter-btn");
     if (!btn) return;
     loadData(parseInt(btn.dataset.range, 10), state.site);
   });
 
-  els.siteSelect.addEventListener("change", function () {
-    loadData(state.range, els.siteSelect.value);
-  });
+  els.refreshBtn.addEventListener("click", refreshAll);
 
   window.addEventListener("resize", function () {
     renderChart(state.daily);
   });
 
-  loadData(state.range, state.site);
+  loadOverview().then(function () {
+    loadData(state.range, state.site);
+  });
 })();

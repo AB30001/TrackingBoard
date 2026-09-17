@@ -10,8 +10,22 @@
   <div class="viz-root">
     <header class="board-header">
       <h1>TrackingBoard</h1>
-      <select class="site-select" id="site-select" aria-label="Site"></select>
+      <button class="refresh-btn" id="refresh-btn" type="button">
+        <span class="refresh-icon" aria-hidden="true">&#8635;</span> Refresh
+      </button>
     </header>
+
+    <section class="card">
+      <h2>Websites</h2>
+      <div class="overview-table" id="overview-table">
+        <div class="overview-row overview-head">
+          <div>Site</div>
+          <div>Monthly pageviews</div>
+          <div>Domain Rating</div>
+        </div>
+        <div id="overview-body"></div>
+      </div>
+    </section>
 
     <div class="filter-row" id="filter-row" role="group" aria-label="Date range">
       <button class="filter-btn" data-range="7">Last 7 days</button>
@@ -35,7 +49,7 @@
     </section>
 
     <section class="card">
-      <h2>Pageviews over time</h2>
+      <h2 id="chart-title">Pageviews over time</h2>
       <div class="chart-wrap" id="chart-wrap">
         <svg id="chart-svg" class="chart-svg" preserveAspectRatio="none"></svg>
         <div class="tooltip" id="tooltip" hidden>
