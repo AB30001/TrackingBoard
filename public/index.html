@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrackingBoard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="viz-root">
+    <header class="board-header">
+      <h1>TrackingBoard</h1>
+      <select class="site-select" id="site-select" aria-label="Site"></select>
+    </header>
+
+    <div class="filter-row" id="filter-row" role="group" aria-label="Date range">
+      <button class="filter-btn" data-range="7">Last 7 days</button>
+      <button class="filter-btn" data-range="30">Last 30 days</button>
+      <button class="filter-btn" data-range="90">Last 90 days</button>
+    </div>
+
+    <section class="kpi-row" id="kpi-row">
+      <div class="stat-tile">
+        <div class="stat-label">Total pageviews</div>
+        <div class="stat-value" id="stat-total">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Avg per day</div>
+        <div class="stat-value" id="stat-avg">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Top page</div>
+        <div class="stat-value stat-value-small" id="stat-top">&mdash;</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Pageviews over time</h2>
+      <div class="chart-wrap" id="chart-wrap">
+        <svg id="chart-svg" class="chart-svg" preserveAspectRatio="none"></svg>
+        <div class="tooltip" id="tooltip" hidden>
+          <div class="tooltip-value" id="tooltip-value"></div>
+          <div class="tooltip-date" id="tooltip-date"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Top pages</h2>
+      <div class="bar-list" id="bar-list"></div>
+    </section>
+
+    <footer class="board-footer">
+      <span id="last-updated">&nbsp;</span>
+      <span id="error-banner" class="error-banner" hidden></span>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
