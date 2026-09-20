@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: trackingboard
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: GOATCOUNTER_SITES
+        sync: false
+      - key: GOATCOUNTER_TOKEN
+        sync: false
+      - key: GOATCOUNTER_SITE_DOMAINS
+        sync: false
+      - key: AHREFS_API_KEY
+        sync: false
+      - key: GOOGLE_SHEET_ID
+        sync: false
+      - key: GOOGLE_SHEET_LINKS_GID
+        sync: false

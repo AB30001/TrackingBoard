@@ -1,8 +1,8 @@
 # TrackingBoard
 
-A small dashboard for GoatCounter traffic stats, deployed as a static site on
-Netlify. API tokens are kept server-side in Netlify Functions so they're
-never exposed to the browser.
+A small dashboard for GoatCounter traffic stats. Runs as a Node/Express web
+service on Render (also still compatible with Netlify Functions). API tokens
+stay server-side so they're never exposed to the browser.
 
 Default view is a table of every tracked site (monthly pageviews + Ahrefs
 Domain Rating). Clicking a row drills into that site's daily trend chart and
@@ -27,8 +27,7 @@ From your Ahrefs account's API settings. Used for the Domain Rating column.
 
 ## 3. Configure environment variables
 
-Copy `.env.example` to `.env` for local dev, or set these in the Netlify site
-dashboard under **Site configuration -> Environment variables**:
+Copy `.env.example` to `.env` for local / Render. Required keys:
 
 - `GOATCOUNTER_SITES` — comma-separated GoatCounter site codes, e.g.
   `venabustallenno,iwp`. Adding a future site is adding it here (plus the
@@ -39,29 +38,49 @@ dashboard under **Site configuration -> Environment variables**:
   domain yet) shows as "Offline" in the Domain Rating column instead of
   attempting a lookup.
 - `AHREFS_API_KEY` — the key from step 2
+- `GOOGLE_SHEET_ID` / `GOOGLE_SHEET_LINKS_GID` — public sheet for the Link web
 
 ## 4. Run locally
 
 ```
-npm install -g netlify-cli   # if you don't have it
-netlify dev
+npm install
+npm start
 ```
 
-This serves `public/` and `netlify/functions/` together at
-`http://localhost:8888`, reading env vars from your local `.env`.
+Serves `public/` and the API handlers at `http://localhost:3000` (or `$PORT`),
+reading env vars from `.env`.
 
-## 5. Deploy
+Netlify local still works if you prefer: `netlify dev` → `http://localhost:8888`.
 
-Push to GitHub and connect the repo in Netlify (or run `netlify deploy
---prod`). Set the environment variables in the Netlify UI first — the
-dashboard will show an error banner if they're missing.
+## 5. Deploy on Render
+
+```
+winget install render.cli   # once
+render login
+render services create \
+  --name trackingboard \
+  --type web_service \
+  --repo https://github.com/AB30001/TrackingBoard.git \
+  --branch master \
+  --runtime node \
+  --build-command "npm install" \
+  --start-command "npm start" \
+  --plan free
+```
+
+Set the env vars above on the service (Dashboard or `--env-var KEY=VALUE`),
+then `render deploys create <service-id> --wait --confirm`.
+
+`render.yaml` is included for Blueprint deploys.
 
 ## How it works
 
+- `server.js` — Express app for Render: static `public/` + API routes
 - `public/` — static dashboard (HTML/CSS/JS, no build step, no frontend deps)
 - `netlify/functions/stats.js` — proxies one site's GoatCounter
   `/api/v0/stats/total` and `/api/v0/stats/hits` for the detail view
 - `netlify/functions/overview.js` — builds the all-sites table: a 30-day
   GoatCounter total plus an Ahrefs Domain Rating lookup per site
+- `netlify/functions/links.js` — Google Sheet → link web graph
 - The frontend never talks to GoatCounter or Ahrefs directly, and never sees
   either token

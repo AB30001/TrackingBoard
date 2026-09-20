@@ -18,10 +18,17 @@
     <section class="card">
       <h2>Websites</h2>
       <div class="overview-table" id="overview-table">
-        <div class="overview-row overview-head">
+        <div class="overview-row overview-head" role="row">
           <div>Site</div>
-          <div>Monthly pageviews</div>
-          <div>Domain Rating</div>
+          <button type="button" class="sort-btn" data-sort="recent" aria-pressed="false">
+            Last 2h <span class="sort-indicator" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sort-btn" data-sort="views" aria-pressed="false">
+            Last 30 days <span class="sort-indicator" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="sort-btn" data-sort="rating" aria-pressed="false">
+            Domain Rating <span class="sort-indicator" aria-hidden="true"></span>
+          </button>
         </div>
         <div id="overview-body"></div>
       </div>
@@ -57,11 +64,60 @@
           <div class="tooltip-date" id="tooltip-date"></div>
         </div>
       </div>
+      <div class="breakdown" id="breakdown">
+        <div class="breakdown-col">
+          <h3>Referrers</h3>
+          <div class="breakdown-list" id="breakdown-referrers"></div>
+        </div>
+        <div class="breakdown-col">
+          <h3>Countries</h3>
+          <div class="breakdown-list" id="breakdown-countries"></div>
+        </div>
+        <div class="breakdown-col">
+          <h3>Devices</h3>
+          <div class="breakdown-list" id="breakdown-devices"></div>
+        </div>
+      </div>
     </section>
 
     <section class="card">
-      <h2>Top pages</h2>
+      <h2 id="top-pages-title">Top pages</h2>
       <div class="bar-list" id="bar-list"></div>
+    </section>
+
+    <section class="card card-wide">
+      <div class="card-head">
+        <h2 id="link-web-title">Link web</h2>
+        <span class="card-meta" id="link-web-meta"></span>
+      </div>
+      <p class="card-sub">Which site links to which — from your Google Sheet. Click a node to focus. Refresh reloads the sheet.</p>
+      <p class="card-sync" id="sheet-sync">Sheet not synced yet</p>
+      <div class="link-web-wrap" id="link-web-wrap">
+        <svg id="link-web-svg" class="link-web-svg"></svg>
+      </div>
+      <div class="link-edge-list" id="link-edge-list"></div>
+    </section>
+
+    <section class="card card-wide">
+      <div class="card-head">
+        <h2>Link exchange</h2>
+        <span class="card-meta" id="link-exchange-meta"></span>
+      </div>
+      <p class="card-sub">Sites that link to each other both ways (A→B and B→A).</p>
+      <div class="exchange-list" id="exchange-list"></div>
+    </section>
+
+    <section class="card card-wide">
+      <div class="card-head">
+        <h2 id="link-web-222-title">Link web - links-222</h2>
+        <span class="card-meta" id="link-web-222-meta"></span>
+      </div>
+      <p class="card-sub">Same map from the Links-222 sheet tab. Click a node to focus. Refresh reloads the sheet.</p>
+      <p class="card-sync" id="sheet-sync-222">Sheet not synced yet</p>
+      <div class="link-web-wrap" id="link-web-222-wrap">
+        <svg id="link-web-222-svg" class="link-web-svg"></svg>
+      </div>
+      <div class="link-edge-list" id="link-edge-222-list"></div>
     </section>
 
     <footer class="board-footer">
