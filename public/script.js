@@ -24,38 +24,169 @@
     chartTitle: document.getElementById("chart-title"),
     overviewBody: document.getElementById("overview-body"),
     overviewTable: document.getElementById("overview-table"),
+    overviewMeta: document.getElementById("overview-meta"),
+    overviewOverlay: document.getElementById("overview-overlay"),
     refreshBtn: document.getElementById("refresh-btn"),
     statTotal: document.getElementById("stat-total"),
     statAvg: document.getElementById("stat-avg"),
     statTop: document.getElementById("stat-top"),
+    kpiRow: document.getElementById("kpi-row"),
+    kpiOverlay: document.getElementById("kpi-overlay"),
     chartSvg: document.getElementById("chart-svg"),
     chartWrap: document.getElementById("chart-wrap"),
+    chartOverlay: document.getElementById("chart-overlay"),
     tooltip: document.getElementById("tooltip"),
     tooltipValue: document.getElementById("tooltip-value"),
     tooltipDate: document.getElementById("tooltip-date"),
     barList: document.getElementById("bar-list"),
+    barListWrap: document.getElementById("bar-list-wrap"),
+    barsOverlay: document.getElementById("bars-overlay"),
     topPagesTitle: document.getElementById("top-pages-title"),
     linkWebWrap: document.getElementById("link-web-wrap"),
     linkWebSvg: document.getElementById("link-web-svg"),
     linkWebMeta: document.getElementById("link-web-meta"),
+    linkWebOverlay: document.getElementById("link-web-overlay"),
+    linkFocusStats: document.getElementById("link-focus-stats"),
     linkEdgeList: document.getElementById("link-edge-list"),
     linkWeb222Wrap: document.getElementById("link-web-222-wrap"),
     linkWeb222Svg: document.getElementById("link-web-222-svg"),
     linkWeb222Meta: document.getElementById("link-web-222-meta"),
+    linkWeb222Overlay: document.getElementById("link-web-222-overlay"),
+    linkFocus222Stats: document.getElementById("link-focus-222-stats"),
     linkEdge222List: document.getElementById("link-edge-222-list"),
     exchangeList: document.getElementById("exchange-list"),
+    exchangeListWrap: document.getElementById("exchange-list-wrap"),
+    exchangeOverlay: document.getElementById("exchange-overlay"),
     exchangeMeta: document.getElementById("link-exchange-meta"),
+    breakdown: document.getElementById("breakdown"),
+    breakdownOverlay: document.getElementById("breakdown-overlay"),
     breakdownReferrers: document.getElementById("breakdown-referrers"),
     breakdownCountries: document.getElementById("breakdown-countries"),
     breakdownDevices: document.getElementById("breakdown-devices"),
     sheetSync: document.getElementById("sheet-sync"),
     sheetSync222: document.getElementById("sheet-sync-222"),
+    noGoatCard: document.getElementById("no-goat-card"),
+    noGoatMeta: document.getElementById("no-goat-meta"),
+    noGoatList: document.getElementById("no-goat-list"),
     lastUpdated: document.getElementById("last-updated"),
     errorBanner: document.getElementById("error-banner"),
     filterRow: document.getElementById("filter-row"),
+    scopeBadge: document.getElementById("scope-badge"),
   };
 
   var SVG_NS = "http://www.w3.org/2000/svg";
+
+  function normalizeDomainKey(raw) {
+    if (!raw) return "";
+    var d = String(raw).trim().toLowerCase();
+    try {
+      if (d.indexOf("://") >= 0 || d.indexOf("www.") === 0) {
+        var url = d.indexOf("://") >= 0 ? new URL(d) : new URL("https://" + d);
+        d = url.hostname;
+      }
+    } catch (e) {
+      // keep raw
+    }
+    return d.replace(/^www\./, "").replace(/\/.*$/, "").trim();
+  }
+
+  function domainToGoatCode(domain) {
+    return normalizeDomainKey(domain).replace(/\./g, "");
+  }
+
+  function websiteCoverage() {
+    var domains = new Set();
+    var codes = new Set();
+    (state.overviewRows || []).forEach(function (row) {
+      if (row.site) codes.add(String(row.site).toLowerCase());
+      var d = normalizeDomainKey(row.domain);
+      if (d) {
+        domains.add(d);
+        codes.add(domainToGoatCode(d));
+      }
+    });
+    return { domains: domains, codes: codes };
+  }
+
+  function collectLinkWebDomains() {
+    var map = new Map();
+    function addFrom(graph, source) {
+      if (!graph || !graph.nodes) return;
+      graph.nodes.forEach(function (n) {
+        var d = normalizeDomainKey(n.id);
+        if (!d) return;
+        var entry = map.get(d);
+        if (!entry) {
+          entry = { domain: d, weight: 0, sources: [] };
+          map.set(d, entry);
+        }
+        entry.weight = Math.max(entry.weight, n.weight || 0);
+        if (entry.sources.indexOf(source) < 0) entry.sources.push(source);
+      });
+    }
+    addFrom(state.linkGraph, "Link web");
+    return Array.from(map.values()).sort(function (a, b) {
+      return a.domain.localeCompare(b.domain);
+    });
+  }
+
+  function findNoGoatSites() {
+    var covered = websiteCoverage();
+    return collectLinkWebDomains().filter(function (item) {
+      if (covered.domains.has(item.domain)) return false;
+      if (covered.codes.has(domainToGoatCode(item.domain))) return false;
+      return true;
+    });
+  }
+
+  function renderNoGoatAlert() {
+    if (!els.noGoatCard || !els.noGoatList) return;
+
+    // Need both sides loaded before comparing.
+    if (!state.overviewRows.length || !state.linkGraph) {
+      els.noGoatCard.hidden = true;
+      els.noGoatList.innerHTML = "";
+      if (els.noGoatMeta) els.noGoatMeta.textContent = "";
+      return;
+    }
+
+    var missing = findNoGoatSites();
+    if (!missing.length) {
+      els.noGoatCard.hidden = true;
+      els.noGoatList.innerHTML = "";
+      if (els.noGoatMeta) els.noGoatMeta.textContent = "";
+      return;
+    }
+
+    els.noGoatCard.hidden = false;
+    if (els.noGoatMeta) {
+      els.noGoatMeta.textContent =
+        missing.length + " site" + (missing.length === 1 ? "" : "s");
+    }
+
+    els.noGoatList.innerHTML = "";
+    missing.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "no-goat-row";
+
+      var badge = document.createElement("span");
+      badge.className = "no-goat-badge";
+      badge.textContent = "!no goat";
+      row.appendChild(badge);
+
+      var domain = document.createElement("span");
+      domain.className = "no-goat-domain";
+      domain.textContent = item.domain;
+      row.appendChild(domain);
+
+      var hint = document.createElement("span");
+      hint.className = "no-goat-hint";
+      hint.textContent = "in sheet · not in GoatCounter list";
+      row.appendChild(hint);
+
+      els.noGoatList.appendChild(row);
+    });
+  }
 
   function formatCompact(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
@@ -164,7 +295,9 @@
         wrap: els.linkWeb222Wrap,
         svg: els.linkWeb222Svg,
         meta: els.linkWeb222Meta,
+        focusStats: els.linkFocus222Stats,
         edgeList: els.linkEdge222List,
+        overlay: els.linkWeb222Overlay,
         markerPrefix: "arrow222",
         withExchanges: false,
       };
@@ -183,7 +316,9 @@
       wrap: els.linkWebWrap,
       svg: els.linkWebSvg,
       meta: els.linkWebMeta,
+      focusStats: els.linkFocusStats,
       edgeList: els.linkEdgeList,
+      overlay: els.linkWebOverlay,
       markerPrefix: "arrow",
       withExchanges: true,
     };
@@ -207,6 +342,129 @@
     }
     els.errorBanner.hidden = false;
     els.errorBanner.textContent = message;
+  }
+
+  function setPanelState(panel, overlay, opts) {
+    opts = opts || {};
+    if (!panel || !overlay) return;
+
+    if (opts.clear) {
+      panel.classList.remove("is-loading");
+      overlay.hidden = true;
+      overlay.classList.remove("is-error");
+      overlay.innerHTML = "";
+      return;
+    }
+
+    overlay.innerHTML = "";
+    var status = document.createElement("div");
+    status.className = "panel-status";
+    status.setAttribute("role", opts.error ? "alert" : "status");
+
+    if (!opts.error) {
+      panel.classList.add("is-loading");
+      overlay.classList.remove("is-error");
+      var spin = document.createElement("div");
+      spin.className = "spinner";
+      spin.setAttribute("aria-hidden", "true");
+      status.appendChild(spin);
+    } else {
+      panel.classList.remove("is-loading");
+      overlay.classList.add("is-error");
+    }
+
+    var label = document.createElement("div");
+    label.className = "panel-status-label";
+    label.textContent = opts.error || opts.loading || "Loading…";
+    status.appendChild(label);
+
+    if (opts.error && typeof opts.onRetry === "function") {
+      var retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "panel-retry";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", function (evt) {
+        evt.preventDefault();
+        opts.onRetry();
+      });
+      status.appendChild(retry);
+    }
+
+    overlay.appendChild(status);
+    overlay.hidden = false;
+  }
+
+  function setStatsBusy(busy) {
+    els.filterRow.classList.toggle("is-busy", !!busy);
+  }
+
+  function setOverviewLoading(on) {
+    setPanelState(els.overviewTable, els.overviewOverlay, on ? { loading: "Loading websites…" } : { clear: true });
+    if (on && els.overviewMeta) els.overviewMeta.textContent = "Loading…";
+  }
+
+  function setOverviewError(message) {
+    setPanelState(els.overviewTable, els.overviewOverlay, {
+      error: message || "Couldn't load websites",
+      onRetry: function () {
+        loadOverview().then(function () {
+          if (state.site) return loadData(state.range, state.site);
+        });
+      },
+    });
+    if (els.overviewMeta) els.overviewMeta.textContent = "Error";
+  }
+
+  function setStatsLoading(on) {
+    var label = "Loading stats…";
+    setPanelState(els.kpiRow, els.kpiOverlay, on ? { loading: label } : { clear: true });
+    setPanelState(els.chartWrap, els.chartOverlay, on ? { loading: label } : { clear: true });
+    setPanelState(els.breakdown, els.breakdownOverlay, on ? { loading: label } : { clear: true });
+    setPanelState(els.barListWrap, els.barsOverlay, on ? { loading: label } : { clear: true });
+    setStatsBusy(on);
+  }
+
+  function setStatsError(message) {
+    var msg = message || "Couldn't load stats";
+    var retry = function () {
+      loadData(state.range, state.site);
+    };
+    setPanelState(els.kpiRow, els.kpiOverlay, { error: msg, onRetry: retry });
+    setPanelState(els.chartWrap, els.chartOverlay, { error: msg, onRetry: retry });
+    setPanelState(els.breakdown, els.breakdownOverlay, { error: msg, onRetry: retry });
+    setPanelState(els.barListWrap, els.barsOverlay, { error: msg, onRetry: retry });
+    setStatsBusy(false);
+  }
+
+  function setLinkWebLoading(which, on) {
+    var slot = getLinkWebSlot(which);
+    setPanelState(slot.wrap, slot.overlay, on ? { loading: "Loading link web…" } : { clear: true });
+    if (which === "farm") {
+      setPanelState(
+        els.exchangeListWrap,
+        els.exchangeOverlay,
+        on ? { loading: "Loading exchanges…" } : { clear: true }
+      );
+    }
+  }
+
+  function setLinkWebError(which, message) {
+    var slot = getLinkWebSlot(which);
+    var msg = message || "Couldn't load link web";
+    setPanelState(slot.wrap, slot.overlay, {
+      error: msg,
+      onRetry: function () {
+        loadLinkWeb(which);
+      },
+    });
+    if (which === "farm") {
+      setPanelState(els.exchangeListWrap, els.exchangeOverlay, {
+        error: msg,
+        onRetry: function () {
+          loadLinkWeb("farm");
+        },
+      });
+    }
   }
 
   function setActiveButton(range) {
@@ -426,8 +684,60 @@
   function setActiveOverviewRow(site) {
     var rows = els.overviewBody.querySelectorAll(".overview-body-row");
     rows.forEach(function (row) {
-      row.classList.toggle("active", row.dataset.site === site);
+      row.classList.toggle("active", !!site && row.dataset.site === site);
     });
+  }
+
+  function siteLabel(site) {
+    if (!site) return "Select a website";
+    var row = (state.overviewRows || []).find(function (r) {
+      return r.site === site;
+    });
+    if (row && row.domain) return row.domain;
+    return site;
+  }
+
+  function updateScopeLabels(scope, site) {
+    var label = siteLabel(site);
+    if (els.scopeBadge) {
+      els.scopeBadge.textContent = site ? "Selected · " + label : "Pick a website";
+      els.scopeBadge.classList.toggle("is-selected", !!site);
+    }
+    els.chartTitle.textContent = "Pageviews over time — " + label;
+    els.topPagesTitle.textContent = "Top pages — " + label;
+  }
+
+  function firstOverviewSite() {
+    if (state.overviewRows && state.overviewRows.length) {
+      return state.overviewRows[0].site;
+    }
+    return "";
+  }
+
+  function selectSite(site) {
+    state.site = site || "";
+    if (site) {
+      var row = (state.overviewRows || []).find(function (r) {
+        return r.site === site;
+      });
+      state.linkFocus = row && row.domain ? String(row.domain).toLowerCase() : "";
+    } else {
+      state.linkFocus = "";
+    }
+    setActiveOverviewRow(state.site);
+    if (state.site) loadData(state.range, state.site);
+    renderLinkWeb("farm");
+  }
+
+  function clearSiteSelection() {
+    // Old behavior: always show one site — jump back to the first row.
+    var first = firstOverviewSite();
+    if (!first) return;
+    if (state.site === first) {
+      loadData(state.range, first);
+      return;
+    }
+    selectSite(first);
   }
 
   function sortValue(row, key) {
@@ -522,6 +832,9 @@
       if (row.totalError) {
         recentCell.className = "overview-error";
         recentCell.textContent = "Error";
+      } else if (row.pending || row.total === null) {
+        recentCell.className = "overview-offline";
+        recentCell.textContent = "…";
       } else {
         recentCell.className = "overview-value";
         recentCell.textContent = formatCompact(row.recent2h || 0);
@@ -535,6 +848,11 @@
         err.className = "overview-error";
         err.textContent = "Error";
         pageviewsCell.appendChild(err);
+      } else if (row.pending || row.total === null) {
+        var pending = document.createElement("div");
+        pending.className = "overview-offline";
+        pending.textContent = "…";
+        pageviewsCell.appendChild(pending);
       } else {
         var val = document.createElement("div");
         val.className = "overview-value";
@@ -553,7 +871,7 @@
         drCell.textContent = "Error";
       } else if (row.dr === null || row.dr === undefined) {
         drCell.className = "overview-offline";
-        drCell.textContent = "—";
+        drCell.textContent = row.pending ? "…" : "—";
       } else {
         drCell.className = "overview-value";
         drCell.textContent = Math.round(row.dr);
@@ -561,11 +879,8 @@
       el.appendChild(drCell);
 
       function select() {
-        state.site = row.site;
-        state.linkFocus = row.domain ? String(row.domain).toLowerCase() : "";
-        setActiveOverviewRow(row.site);
-        loadData(state.range, row.site);
-        renderLinkWeb();
+        if (state.site === row.site) return;
+        selectSite(row.site);
       }
       el.addEventListener("click", select);
       el.addEventListener("keydown", function (evt) {
@@ -581,77 +896,240 @@
     setActiveOverviewRow(state.site);
   }
 
-  function loadOverview() {
-    return fetch("/.netlify/functions/overview")
-      .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error(body.error || "Request failed");
-          return body;
-        });
-      })
+  function apiUrl(path, fresh) {
+    var sep = path.indexOf("?") >= 0 ? "&" : "?";
+    var url = path + sep + "_=" + Date.now();
+    if (fresh) url += "&fresh=1";
+    return url;
+  }
+
+  function apiFetch(path, opts) {
+    opts = opts || {};
+    return fetch(apiUrl(path, opts.fresh), {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    }).then(function (res) {
+      return res.json().then(function (body) {
+        if (!res.ok) throw new Error(body.error || "Request failed");
+        return body;
+      });
+    });
+  }
+
+  function cacheNote(data) {
+    if (!data || !data.cache) return "";
+    if (data.cache === "HIT" || data.cache === "SHARED") {
+      if (!data.cachedAt) return " · cached";
+      var sec = Math.max(0, Math.round((Date.now() - new Date(data.cachedAt).getTime()) / 1000));
+      if (sec < 5) return " · cached just now";
+      if (sec < 60) return " · cached " + sec + "s ago";
+      return " · cached " + Math.round(sec / 60) + "m ago";
+    }
+    return " · fresh";
+  }
+
+  var overviewFillToken = 0;
+
+  function mergeOverviewRow(row) {
+    if (!row || !row.site) return;
+    var list = state.overviewRows || [];
+    var idx = list.findIndex(function (r) {
+      return r.site === row.site;
+    });
+    if (idx >= 0) list[idx] = row;
+    else list.push(row);
+    state.overviewRows = list;
+  }
+
+  function fillOverviewMetrics(opts) {
+    opts = opts || {};
+    var token = ++overviewFillToken;
+    var sites = (state.overviewRows || []).map(function (r) {
+      return r.site;
+    });
+    // Prefer the selected site first so its table row fills ASAP.
+    if (state.site) {
+      sites = [state.site].concat(
+        sites.filter(function (s) {
+          return s !== state.site;
+        })
+      );
+    }
+    var i = 0;
+
+    function next() {
+      if (token !== overviewFillToken) return Promise.resolve();
+      if (i >= sites.length) {
+        if (els.overviewMeta) {
+          var ready = (state.overviewRows || []).filter(function (r) {
+            return r.total !== null;
+          }).length;
+          els.overviewMeta.textContent = ready + " / " + sites.length + " sites";
+        }
+        return Promise.resolve();
+      }
+      var code = sites[i++];
+      var url = "/.netlify/functions/overview?site=" + encodeURIComponent(code) + "&dr=1";
+      return apiFetch(url, opts)
+        .then(function (data) {
+          if (token !== overviewFillToken) return;
+          if (data && data.row) {
+            mergeOverviewRow(data.row);
+            renderOverview();
+            setActiveOverviewRow(state.site);
+          }
+        })
+        .catch(function () {
+          if (token !== overviewFillToken) return;
+          var prev = (state.overviewRows || []).find(function (r) {
+            return r.site === code;
+          }) || {};
+          mergeOverviewRow({
+            site: code,
+            domain: prev.domain || null,
+            offline: !prev.domain,
+            total: null,
+            recent2h: null,
+            spark: null,
+            totalError: "Unavailable",
+            dr: null,
+            drError: null,
+            pending: false,
+          });
+          renderOverview();
+        })
+        .then(function () {
+          return new Promise(function (resolve) {
+            setTimeout(resolve, 350);
+          });
+        })
+        .then(next);
+    }
+
+    if (els.overviewMeta) {
+      els.overviewMeta.textContent = "0 / " + sites.length + " sites";
+    }
+    return next();
+  }
+
+  function loadOverview(opts) {
+    opts = opts || {};
+    setOverviewLoading(true);
+    // Instant list (no GoatCounter fan-out), then fill one site at a time.
+    return apiFetch("/.netlify/functions/overview", opts)
       .then(function (data) {
         state.overviewRows = data.rows || [];
+        setOverviewLoading(false);
         renderOverview();
-        if (!state.site && state.overviewRows.length) {
-          state.site = sortedOverviewRows()[0].site;
-          setActiveOverviewRow(state.site);
+        if (els.overviewMeta) {
+          els.overviewMeta.textContent = state.overviewRows.length
+            ? state.overviewRows.length + " sites"
+            : "";
         }
+        if (state.site) {
+          var stillThere = state.overviewRows.some(function (r) {
+            return r.site === state.site;
+          });
+          if (!stillThere) state.site = "";
+        }
+        if (!state.site && state.overviewRows.length) {
+          state.site = state.overviewRows[0].site;
+        }
+        setActiveOverviewRow(state.site);
+        els.lastUpdated.textContent =
+          "Updated " +
+          new Date().toLocaleTimeString() +
+          (data.siteCount ? " · " + data.siteCount + " sites" : "") +
+          cacheNote(data);
+        renderNoGoatAlert();
+        return data;
       })
       .catch(function (err) {
+        state.overviewRows = [];
+        setOverviewError("Couldn't load websites: " + err.message);
         showError("Couldn't load site overview: " + err.message);
+        renderNoGoatAlert();
+        throw err;
       });
   }
 
-  function loadData(range, site) {
+  function loadData(range, site, opts) {
+    opts = opts || {};
     state.range = range;
+    if (site) state.site = site;
     setActiveButton(range);
+    setActiveOverviewRow(state.site);
     showError(null);
+    setStatsLoading(true);
+    updateScopeLabels("site", state.site || "");
 
+    // One site only. If none picked yet, the server defaults to the first
+    // configured site (old, fast behavior) — never fan out to all sites.
     var url = "/.netlify/functions/stats?range=" + range;
-    if (site) url += "&site=" + encodeURIComponent(site);
+    if (state.site) {
+      url += "&site=" + encodeURIComponent(state.site);
+    }
 
-    return fetch(url)
-      .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error(body.error || "Request failed");
-          return body;
-        });
-      })
+    return apiFetch(url, opts)
       .then(function (data) {
-        state.site = data.site || "";
+        setStatsLoading(false);
+        state.site = data.site || state.site || "";
         setActiveOverviewRow(state.site);
-        els.chartTitle.textContent = "Pageviews over time — " + state.site;
-        els.topPagesTitle.textContent = "Top pages — " + state.site;
+        updateScopeLabels(data.scope || "site", state.site);
         renderKPIs(data);
         renderChart(data.daily);
         renderBarList(data.topPages);
         renderBreakdownList(els.breakdownReferrers, data.referrers);
         renderBreakdownList(els.breakdownCountries, data.countries);
         renderBreakdownList(els.breakdownDevices, data.devices);
-        els.lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();
+        els.lastUpdated.textContent =
+          "Updated " + new Date().toLocaleTimeString() + cacheNote(data);
       })
       .catch(function (err) {
+        setStatsError("Couldn't load stats: " + err.message);
         showError("Couldn't load stats: " + err.message);
         renderChart([]);
         renderBarList([]);
         renderBreakdownList(els.breakdownReferrers, []);
         renderBreakdownList(els.breakdownCountries, []);
         renderBreakdownList(els.breakdownDevices, []);
+        els.statTotal.textContent = "—";
+        els.statAvg.textContent = "—";
+        els.statTop.textContent = "—";
+        throw err;
       });
   }
 
   function refreshAll() {
     els.refreshBtn.classList.add("spinning");
     els.refreshBtn.disabled = true;
-    Promise.all([
-      loadOverview(),
-      loadData(state.range, state.site),
-      loadLinkWeb("farm"),
-      loadLinkWeb("222"),
-    ]).finally(function () {
-      els.refreshBtn.classList.remove("spinning");
-      els.refreshBtn.disabled = false;
-    });
+    showError(null);
+    var fresh = { fresh: true };
+    overviewFillToken += 1;
+    Promise.allSettled([
+      loadData(state.range, state.site, fresh),
+      loadOverview(fresh),
+      loadLinkWeb("farm", fresh),
+      loadLinkWeb("222", fresh),
+    ])
+      .then(function (results) {
+        var fails = results.filter(function (r) {
+          return r.status === "rejected";
+        });
+        if (fails.length) {
+          showError(
+            fails.length +
+              " of " +
+              results.length +
+              " refresh requests failed. Use Retry on the red panels."
+          );
+        }
+        return fillOverviewMetrics(fresh);
+      })
+      .finally(function () {
+        els.refreshBtn.classList.remove("spinning");
+        els.refreshBtn.disabled = false;
+      });
   }
 
   function clearLinkSvg(slot) {
@@ -722,6 +1200,10 @@
 
     if (!graph || !graph.nodes || !graph.nodes.length) {
       slot.meta.textContent = "";
+      if (slot.focusStats) {
+        slot.focusStats.hidden = true;
+        slot.focusStats.textContent = "";
+      }
       slot.edgeList.innerHTML = "";
       if (slot.withExchanges) renderExchanges([], "");
       var empty = document.createElementNS(SVG_NS, "text");
@@ -733,9 +1215,6 @@
       slot.svg.appendChild(empty);
       return;
     }
-
-    slot.meta.textContent =
-      graph.linkCount + " links · " + graph.nodes.length + " sites · " + graph.edges.length + " routes";
 
     var wrap = slot.wrap;
     var width = wrap.clientWidth || 900;
@@ -765,6 +1244,56 @@
     slot.svg.appendChild(defs);
 
     var focus = slot.getFocus();
+    var baseMeta =
+      graph.linkCount + " links · " + graph.nodes.length + " sites · " + graph.edges.length + " routes";
+    var inboundRoutes = 0;
+    var outboundRoutes = 0;
+    var inboundLinks = 0;
+    var outboundLinks = 0;
+    if (focus) {
+      graph.edges.forEach(function (e) {
+        var n = Number(e.count) || 0;
+        if (e.target === focus) {
+          inboundRoutes += 1;
+          inboundLinks += n;
+        }
+        if (e.source === focus) {
+          outboundRoutes += 1;
+          outboundLinks += n;
+        }
+      });
+      slot.meta.textContent =
+        focus + " · " + inboundRoutes + " inbound · " + outboundRoutes + " outbound";
+      if (slot.focusStats) {
+        slot.focusStats.hidden = false;
+        slot.focusStats.textContent = "";
+        var nameEl = document.createElement("strong");
+        nameEl.textContent = focus;
+        slot.focusStats.appendChild(nameEl);
+        slot.focusStats.appendChild(
+          document.createTextNode(" · inbound ")
+        );
+        var inEl = document.createElement("strong");
+        inEl.textContent = String(inboundRoutes);
+        slot.focusStats.appendChild(inEl);
+        slot.focusStats.appendChild(
+          document.createTextNode(" (" + inboundLinks + " links) · outbound ")
+        );
+        var outEl = document.createElement("strong");
+        outEl.textContent = String(outboundRoutes);
+        slot.focusStats.appendChild(outEl);
+        slot.focusStats.appendChild(
+          document.createTextNode(" (" + outboundLinks + " links)")
+        );
+      }
+    } else {
+      slot.meta.textContent = baseMeta;
+      if (slot.focusStats) {
+        slot.focusStats.hidden = true;
+        slot.focusStats.textContent = "";
+      }
+    }
+
     var nodes = graph.nodes.map(function (n) {
       return { id: n.id, weight: n.weight, x: width / 2, y: height / 2, vx: 0, vy: 0 };
     });
@@ -1005,20 +1534,16 @@
     });
   }
 
-  function loadLinkWeb(which) {
+  function loadLinkWeb(which, opts) {
+    opts = opts || {};
     var slot = getLinkWebSlot(which || "farm");
     var url =
       which === "222"
         ? "/.netlify/functions/links?gid=" + encodeURIComponent(LINKS_222_GID)
         : "/.netlify/functions/links";
 
-    return fetch(url)
-      .then(function (res) {
-        return res.json().then(function (body) {
-          if (!res.ok) throw new Error(body.error || "Request failed");
-          return body;
-        });
-      })
+    setLinkWebLoading(slot.which, true);
+    return apiFetch(url, opts)
       .then(function (data) {
         if (which === "222") {
           state.linkGraph222 = data;
@@ -1028,7 +1553,9 @@
           state.sheetFetchedAt = data.fetchedAt || new Date().toISOString();
         }
         updateSheetSyncLabel();
+        setLinkWebLoading(slot.which, false);
         renderLinkWeb(slot.which);
+        renderNoGoatAlert();
       })
       .catch(function (err) {
         if (which === "222") {
@@ -1042,15 +1569,14 @@
         clearLinkSvg(slot);
         slot.meta.textContent = "";
         slot.edgeList.innerHTML = "";
-        if (slot.withExchanges) renderExchanges([], "");
-        var empty = document.createElementNS(SVG_NS, "text");
-        empty.setAttribute("x", "50%");
-        empty.setAttribute("y", "50%");
-        empty.setAttribute("text-anchor", "middle");
-        empty.setAttribute("class", "chart-axis-label");
-        empty.textContent = "Couldn't load link web: " + err.message;
-        slot.svg.appendChild(empty);
+        if (slot.withExchanges) {
+          els.exchangeList.innerHTML = "";
+          els.exchangeMeta.textContent = "";
+        }
+        setLinkWebError(slot.which, "Couldn't load link web: " + err.message);
         showError("Couldn't load link web: " + err.message);
+        renderNoGoatAlert();
+        throw err;
       });
   }
 
@@ -1060,30 +1586,42 @@
     loadData(parseInt(btn.dataset.range, 10), state.site);
   });
 
+  if (els.scopeBadge) {
+    els.scopeBadge.title = "Click to select the first website";
+    els.scopeBadge.addEventListener("click", function () {
+      clearSiteSelection();
+    });
+  }
+
   els.overviewTable.addEventListener("click", function (evt) {
-    var btn = evt.target.closest(".sort-btn");
-    if (!btn) return;
-    var key = btn.dataset.sort;
-    if (key === "views") {
-      if (state.sortPrimary === "views") {
-        state.viewsDir = state.viewsDir === "desc" ? "asc" : "desc";
-      } else {
-        state.sortPrimary = "views";
+    if (evt.target.closest(".overview-body-row")) return;
+    if (evt.target.closest(".sort-btn")) {
+      var btn = evt.target.closest(".sort-btn");
+      var key = btn.dataset.sort;
+      if (key === "views") {
+        if (state.sortPrimary === "views") {
+          state.viewsDir = state.viewsDir === "desc" ? "asc" : "desc";
+        } else {
+          state.sortPrimary = "views";
+        }
+      } else if (key === "recent") {
+        if (state.sortPrimary === "recent") {
+          state.recentDir = state.recentDir === "desc" ? "asc" : "desc";
+        } else {
+          state.sortPrimary = "recent";
+        }
+      } else if (key === "rating") {
+        if (state.sortPrimary === "rating") {
+          state.ratingDir = state.ratingDir === "desc" ? "asc" : "desc";
+        } else {
+          state.sortPrimary = "rating";
+        }
       }
-    } else if (key === "recent") {
-      if (state.sortPrimary === "recent") {
-        state.recentDir = state.recentDir === "desc" ? "asc" : "desc";
-      } else {
-        state.sortPrimary = "recent";
-      }
-    } else if (key === "rating") {
-      if (state.sortPrimary === "rating") {
-        state.ratingDir = state.ratingDir === "desc" ? "asc" : "desc";
-      } else {
-        state.sortPrimary = "rating";
-      }
+      renderOverview();
+      return;
     }
-    renderOverview();
+    // Empty spot in the websites card → first website.
+    clearSiteSelection();
   });
 
   els.refreshBtn.addEventListener("click", refreshAll);
@@ -1106,9 +1644,14 @@
     renderLinkWeb("222");
   });
 
-  loadOverview().then(function () {
-    loadData(state.range, state.site);
-  });
+  // Boot: site list + charts for the first site immediately.
+  // Table metrics fill one-by-one after charts, to avoid GoatCounter 429s.
+  loadOverview().catch(function () {});
+  loadData(state.range, state.site)
+    .catch(function () {})
+    .then(function () {
+      return fillOverviewMetrics();
+    });
   loadLinkWeb("farm");
   loadLinkWeb("222");
   setInterval(updateSheetSyncLabel, 30000);

@@ -321,6 +321,8 @@ body {
   margin: 0 auto 20px;
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .filter-btn {
@@ -344,6 +346,30 @@ body {
   border-color: var(--series-1);
   color: #ffffff;
   font-weight: 600;
+}
+
+.scope-badge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scope-badge:hover {
+  color: var(--text-primary);
+  border-color: var(--series-1);
+}
+
+.scope-badge.is-selected {
+  color: var(--series-1);
+  border-color: color-mix(in srgb, var(--series-1) 45%, var(--border));
+  background: var(--series-1-wash);
 }
 
 .kpi-row {
@@ -506,6 +532,21 @@ body {
 .link-node.dim text {
   fill: var(--text-muted);
   opacity: 0.4;
+}
+
+.link-focus-stats {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--series-1) 12%, var(--page-plane));
+  border: 1px solid color-mix(in srgb, var(--series-1) 28%, transparent);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.link-focus-stats strong {
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .link-edge-list {
@@ -774,6 +815,50 @@ body {
   color: var(--text-muted);
 }
 
+.no-goat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.no-goat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, #d03b3b 35%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #d03b3b 8%, var(--surface-1));
+}
+
+.no-goat-badge {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: #d03b3b;
+  border-radius: 4px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
+.no-goat-domain {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.no-goat-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+#no-goat-card .card-head h2 {
+  color: #d03b3b;
+}
+
 .error-banner {
   color: #d03b3b;
 }
@@ -782,4 +867,106 @@ body {
   color: var(--text-muted);
   font-size: 13px;
   padding: 12px 0;
+}
+
+.panel {
+  position: relative;
+}
+
+.panel.is-loading > :not(.panel-overlay) {
+  opacity: 0.45;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.panel-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--page-plane) 72%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+.panel-overlay[hidden] {
+  display: none !important;
+}
+
+.panel-overlay.is-error {
+  background: color-mix(in srgb, var(--page-plane) 88%, transparent);
+}
+
+.panel-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  max-width: 28rem;
+}
+
+.panel-status-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.panel-overlay.is-error .panel-status-label {
+  color: #d03b3b;
+}
+
+.panel-retry {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.panel-retry:hover {
+  background: var(--series-1-100);
+}
+
+.spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--gridline);
+  border-top-color: var(--series-1);
+  border-radius: 50%;
+  animation: spinner-rotate 0.7s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+#kpi-row.panel {
+  min-height: 88px;
+}
+
+#bar-list-wrap.panel,
+#exchange-list-wrap.panel {
+  min-height: 72px;
+}
+
+#breakdown.panel {
+  min-height: 120px;
+}
+
+.filter-row.is-busy .filter-btn {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .refresh-btn.spinning .refresh-icon {
+    animation: none;
+  }
 }

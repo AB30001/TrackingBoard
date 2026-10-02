@@ -89,12 +89,26 @@ function buildGraph(rows) {
   const header = rows[0].map((h) => String(h || "").trim().toLowerCase());
   const titleIdx = header.findIndex((h) => h === "title");
   const urlIdx = header.findIndex((h) => h === "url");
-  const linkToIdx = header.findIndex((h) => h === "link to" || h === "linkto" || h === "link_to");
+  const linkToIdx = header.findIndex(
+    (h) =>
+      h === "link to" ||
+      h === "linkto" ||
+      h === "link_to" ||
+      h === "target" ||
+      h === "destination" ||
+      h === "to"
+  );
   const dateIdx = header.findIndex((h) => h === "date");
-  const statusIdx = header.length > 4 ? 4 : header.findIndex((h) => h === "indexed" || h === "status");
+  let statusIdx = header.findIndex(
+    (h) => h === "indexed" || h === "status" || h === "index status"
+  );
+  if (statusIdx < 0 && header.length >= 5) statusIdx = 4;
 
   if (urlIdx < 0 || linkToIdx < 0) {
-    throw new Error('Sheet must have "Url" and "Link to" columns.');
+    throw new Error(
+      'Sheet must have "Url" and a link target column ("Link to", "Target", etc.). Got: ' +
+        header.filter(Boolean).join(", ")
+    );
   }
 
   const edgeMap = new Map();
@@ -167,11 +181,13 @@ function findExchanges(edges) {
 }
 
 exports.handler = async (event) => {
+  const cache = require("../../lib/cache");
   const sheetId = process.env.GOOGLE_SHEET_ID || DEFAULT_SHEET_ID;
+  const params = (event && event.queryStringParameters) || {};
+  const headers = (event && event.headers) || {};
+  const force = cache.wantsFresh(params, headers);
   const requestedGid =
-    (event && event.queryStringParameters && event.queryStringParameters.gid) ||
-    process.env.GOOGLE_SHEET_LINKS_GID ||
-    DEFAULT_LINKS_GID;
+    params.gid || process.env.GOOGLE_SHEET_LINKS_GID || DEFAULT_LINKS_GID;
   const gid = ALLOWED_GIDS.has(String(requestedGid))
     ? String(requestedGid)
     : DEFAULT_LINKS_GID;
@@ -182,43 +198,55 @@ exports.handler = async (event) => {
     encodeURIComponent(gid);
 
   try {
-    const res = await fetch(csvUrl, { redirect: "follow" });
-    if (!res.ok) {
-      return {
-        statusCode: 502,
-        body: JSON.stringify({
-          error: "Could not fetch Google Sheet (" + res.status + "). Is it shared as Anyone with the link?",
-        }),
-      };
-    }
+    const cached = await cache.wrap(
+      "links:" + sheetId + ":" + gid,
+      cache.TTL.links,
+      async () => {
+        const res = await fetch(csvUrl, { redirect: "follow", cache: "no-store" });
+        if (!res.ok) {
+          const err = new Error(
+            "Could not fetch Google Sheet (" +
+              res.status +
+              "). Is it shared as Anyone with the link?"
+          );
+          err.status = 502;
+          throw err;
+        }
 
-    const text = await res.text();
-    if (/<!DOCTYPE html>/i.test(text) || /sign in/i.test(text.slice(0, 500))) {
-      return {
-        statusCode: 502,
-        body: JSON.stringify({
-          error: "Google Sheet is not publicly readable. Share → Anyone with the link → Viewer.",
-        }),
-      };
-    }
+        const text = await res.text();
+        if (/<!DOCTYPE html>/i.test(text) || /sign in/i.test(text.slice(0, 500))) {
+          const err = new Error(
+            "Google Sheet is not publicly readable. Share → Anyone with the link → Viewer."
+          );
+          err.status = 502;
+          throw err;
+        }
 
-    const graph = buildGraph(parseCsv(text));
+        const graph = buildGraph(parseCsv(text));
+        return {
+          sheetId,
+          gid,
+          fetchedAt: new Date().toISOString(),
+          nodeCount: graph.nodes.length,
+          edgeCount: graph.edges.length,
+          linkCount: graph.links.length,
+          exchangeCount: graph.exchanges.length,
+          ...graph,
+        };
+      },
+      { force }
+    );
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      body: JSON.stringify({
-        sheetId,
-        gid,
-        fetchedAt: new Date().toISOString(),
-        nodeCount: graph.nodes.length,
-        edgeCount: graph.edges.length,
-        linkCount: graph.links.length,
-        exchangeCount: graph.exchanges.length,
-        ...graph,
-      }),
+      headers: cache.cacheHeaders(cached),
+      body: JSON.stringify(cache.withCacheMeta(cached.value, cached)),
     };
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    return {
+      statusCode: err.status || 500,
+      headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      body: JSON.stringify({ error: err.message }),
+    };
   }
 };

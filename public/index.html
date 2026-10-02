@@ -15,9 +15,12 @@
       </button>
     </header>
 
-    <section class="card">
-      <h2>Websites</h2>
-      <div class="overview-table" id="overview-table">
+    <section class="card" id="overview-card">
+      <div class="card-head">
+        <h2>Websites</h2>
+        <span class="card-meta" id="overview-meta"></span>
+      </div>
+      <div class="overview-table panel" id="overview-table">
         <div class="overview-row overview-head" role="row">
           <div>Site</div>
           <button type="button" class="sort-btn" data-sort="recent" aria-pressed="false">
@@ -31,6 +34,7 @@
           </button>
         </div>
         <div id="overview-body"></div>
+        <div class="panel-overlay" id="overview-overlay" hidden></div>
       </div>
     </section>
 
@@ -38,9 +42,10 @@
       <button class="filter-btn" data-range="7">Last 7 days</button>
       <button class="filter-btn" data-range="30">Last 30 days</button>
       <button class="filter-btn" data-range="90">Last 90 days</button>
+      <span class="scope-badge" id="scope-badge">Pick a website</span>
     </div>
 
-    <section class="kpi-row" id="kpi-row">
+    <section class="kpi-row panel" id="kpi-row">
       <div class="stat-tile">
         <div class="stat-label">Total pageviews</div>
         <div class="stat-value" id="stat-total">&mdash;</div>
@@ -53,18 +58,20 @@
         <div class="stat-label">Top page</div>
         <div class="stat-value stat-value-small" id="stat-top">&mdash;</div>
       </div>
+      <div class="panel-overlay" id="kpi-overlay" hidden></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="stats-card">
       <h2 id="chart-title">Pageviews over time</h2>
-      <div class="chart-wrap" id="chart-wrap">
+      <div class="chart-wrap panel" id="chart-wrap">
         <svg id="chart-svg" class="chart-svg" preserveAspectRatio="none"></svg>
         <div class="tooltip" id="tooltip" hidden>
           <div class="tooltip-value" id="tooltip-value"></div>
           <div class="tooltip-date" id="tooltip-date"></div>
         </div>
+        <div class="panel-overlay" id="chart-overlay" hidden></div>
       </div>
-      <div class="breakdown" id="breakdown">
+      <div class="breakdown panel" id="breakdown">
         <div class="breakdown-col">
           <h3>Referrers</h3>
           <div class="breakdown-list" id="breakdown-referrers"></div>
@@ -77,47 +84,67 @@
           <h3>Devices</h3>
           <div class="breakdown-list" id="breakdown-devices"></div>
         </div>
+        <div class="panel-overlay" id="breakdown-overlay" hidden></div>
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" id="top-pages-card">
       <h2 id="top-pages-title">Top pages</h2>
-      <div class="bar-list" id="bar-list"></div>
+      <div class="panel" id="bar-list-wrap">
+        <div class="bar-list" id="bar-list"></div>
+        <div class="panel-overlay" id="bars-overlay" hidden></div>
+      </div>
     </section>
 
-    <section class="card card-wide">
+    <section class="card card-wide" id="link-web-card">
       <div class="card-head">
         <h2 id="link-web-title">Link web</h2>
         <span class="card-meta" id="link-web-meta"></span>
       </div>
       <p class="card-sub">Which site links to which — from your Google Sheet. Click a node to focus. Refresh reloads the sheet.</p>
       <p class="card-sync" id="sheet-sync">Sheet not synced yet</p>
-      <div class="link-web-wrap" id="link-web-wrap">
+      <div class="link-web-wrap panel" id="link-web-wrap">
         <svg id="link-web-svg" class="link-web-svg"></svg>
+        <div class="panel-overlay" id="link-web-overlay" hidden></div>
       </div>
+      <p class="link-focus-stats" id="link-focus-stats" hidden></p>
       <div class="link-edge-list" id="link-edge-list"></div>
     </section>
 
-    <section class="card card-wide">
+    <section class="card card-wide" id="link-exchange-card">
       <div class="card-head">
         <h2>Link exchange</h2>
         <span class="card-meta" id="link-exchange-meta"></span>
       </div>
       <p class="card-sub">Sites that link to each other both ways (A→B and B→A).</p>
-      <div class="exchange-list" id="exchange-list"></div>
+      <div class="panel" id="exchange-list-wrap">
+        <div class="exchange-list" id="exchange-list"></div>
+        <div class="panel-overlay" id="exchange-overlay" hidden></div>
+      </div>
     </section>
 
-    <section class="card card-wide">
+    <section class="card card-wide" id="link-web-222-card">
       <div class="card-head">
         <h2 id="link-web-222-title">Link web - links-222</h2>
         <span class="card-meta" id="link-web-222-meta"></span>
       </div>
       <p class="card-sub">Same map from the Links-222 sheet tab. Click a node to focus. Refresh reloads the sheet.</p>
       <p class="card-sync" id="sheet-sync-222">Sheet not synced yet</p>
-      <div class="link-web-wrap" id="link-web-222-wrap">
+      <div class="link-web-wrap panel" id="link-web-222-wrap">
         <svg id="link-web-222-svg" class="link-web-svg"></svg>
+        <div class="panel-overlay" id="link-web-222-overlay" hidden></div>
       </div>
+      <p class="link-focus-stats" id="link-focus-222-stats" hidden></p>
       <div class="link-edge-list" id="link-edge-222-list"></div>
+    </section>
+
+    <section class="card card-wide" id="no-goat-card" hidden>
+      <div class="card-head">
+        <h2>!no goat</h2>
+        <span class="card-meta" id="no-goat-meta"></span>
+      </div>
+      <p class="card-sub">In Link web (sheet) but not tracked in Websites (GoatCounter).</p>
+      <div class="no-goat-list" id="no-goat-list"></div>
     </section>
 
     <footer class="board-footer">

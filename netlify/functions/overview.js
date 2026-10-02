@@ -1,67 +1,16 @@
-// Multi-site summary used by the dashboard's default table view: one row per
-// GoatCounter site with a 30-day pageview total plus an Ahrefs Domain Rating
-// lookup. Both API tokens stay server-side.
+// Multi-site summary for the websites table.
 //
-// GOATCOUNTER_SITE_DOMAINS maps a GoatCounter site code to its real domain,
-// e.g. "venabustallenno:venabustallen.no,iwp:example.com". A site left out
-// of this map (no live domain yet) is reported as offline instead of
-// attempting an Ahrefs lookup.
+// Modes:
+//   (default)     Progressive-friendly: returns the configured site list
+//                 immediately (no GoatCounter fan-out). Metrics are null.
+//   ?site=code    Fetch pageviews (+ optional DR) for one site only.
+//   ?full=1       Legacy: fetch every site sequentially (slow; avoid on boot).
+//   ?dr=1         With ?site= or ?full=1, also fetch Ahrefs Domain Rating.
+
+const { resolveSites, goatFetch } = require("../../lib/goatcounter");
 
 const OVERVIEW_DAYS = 30;
-// GoatCounter allows 4 req/s. Stay sequential so 20 sites don't trip 429s.
-const FETCH_CONCURRENCY = 1;
 
-function parseDomainMap(raw) {
-  const map = {};
-  (raw || "")
-    .split(",")
-    .map((pair) => pair.trim())
-    .filter(Boolean)
-    .forEach((pair) => {
-      const [code, domain] = pair.split(":").map((s) => s.trim());
-      if (code && domain) map[code] = domain;
-    });
-  return map;
-}
-
-async function mapPool(items, concurrency, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const n = Math.min(concurrency, items.length);
-  await Promise.all(Array.from({ length: n }, () => worker()));
-  return results;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function fetchPageviews(site, token, start, end) {
-  const url = `https://${site}.goatcounter.com/api/v0/stats/total?start=${start.toISOString()}&end=${end.toISOString()}`;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (res.status === 429) {
-      await sleep(1000 * (attempt + 1));
-      continue;
-    }
-    if (!res.ok) throw new Error(`GoatCounter ${site} (${res.status})`);
-    const data = await res.json();
-    return {
-      total: data.total || 0,
-      recent2h: sumLastTwoHours(data.stats, end),
-      spark: lastNDayCounts(data.stats, 7),
-    };
-  }
-  throw new Error(`GoatCounter ${site} (429)`);
-}
-
-// GoatCounter only has hourly buckets — "Last 2h" = current UTC hour + previous hour.
 function sumLastTwoHours(stats, end) {
   const hour = end.getUTCHours();
   const today = end.toISOString().slice(0, 10);
@@ -93,83 +42,208 @@ function lastNDayCounts(stats, n) {
   return daily;
 }
 
-async function fetchDomainRating(domain, ahrefsKey) {
-  // The free public endpoint (no Site Explorer subscription required) —
-  // not /v3/site-explorer/domain-rating, which 401s without a paid plan.
-  const url = `https://api.ahrefs.com/v3/public/domain-rating-free?target=${encodeURIComponent(domain)}&output=json`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${ahrefsKey}`, Accept: "application/json" },
-  });
-  if (!res.ok) throw new Error(`Ahrefs ${domain} (${res.status})`);
-  const data = await res.json();
-  return data.domain_rating ? data.domain_rating.domain_rating : null;
-}
-
-exports.handler = async () => {
-  const token = process.env.GOATCOUNTER_TOKEN;
-  const ahrefsKey = process.env.AHREFS_API_KEY;
-  const sites = (process.env.GOATCOUNTER_SITES || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const domainMap = parseDomainMap(process.env.GOATCOUNTER_SITE_DOMAINS);
-
-  if (!sites.length || !token) {
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Missing GOATCOUNTER_SITES or GOATCOUNTER_TOKEN environment variable." }),
-    };
-  }
-
+function rangeWindow() {
   const end = new Date();
   end.setUTCMinutes(0, 0, 0);
   end.setUTCSeconds(0, 0);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (OVERVIEW_DAYS - 1));
   start.setUTCHours(0, 0, 0, 0);
+  return { start, end };
+}
 
-  const rows = await mapPool(sites, FETCH_CONCURRENCY, async (site) => {
-    const domain = domainMap[site] || null;
+async function fetchPageviews(site, token, start, end) {
+  const url =
+    "https://" +
+    encodeURIComponent(site) +
+    ".goatcounter.com/api/v0/stats/total?start=" +
+    start.toISOString() +
+    "&end=" +
+    end.toISOString();
+  const res = await goatFetch(url, token, { timeoutMs: 10000, retries: 2 });
+  if (!res.ok) throw new Error("GoatCounter " + site + " (" + res.status + ")");
+  const data = res.data || {};
+  return {
+    total: data.total || 0,
+    recent2h: sumLastTwoHours(data.stats, end),
+    spark: lastNDayCounts(data.stats, 7),
+  };
+}
 
-    let total = null;
-    let recent2h = null;
-    let spark = null;
-    let totalError = null;
+async function fetchDomainRating(domain, ahrefsKey) {
+  const url =
+    "https://api.ahrefs.com/v3/public/domain-rating-free?target=" +
+    encodeURIComponent(domain) +
+    "&output=json";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(url, {
+      headers: { Authorization: "Bearer " + ahrefsKey, Accept: "application/json" },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error("Ahrefs " + domain + " (" + res.status + ")");
+    const data = await res.json();
+    return data.domain_rating ? data.domain_rating.domain_rating : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function emptyRow(meta) {
+  return {
+    site: meta.code,
+    domain: meta.domain,
+    offline: !meta.domain,
+    total: null,
+    recent2h: null,
+    spark: null,
+    totalError: null,
+    dr: null,
+    drError: null,
+    pending: true,
+  };
+}
+
+async function enrichRow(meta, token, start, end, ahrefsKey, wantDr) {
+  const row = emptyRow(meta);
+  row.pending = false;
+  try {
+    const pv = await fetchPageviews(meta.code, token, start, end);
+    row.total = pv.total;
+    row.recent2h = pv.recent2h;
+    row.spark = pv.spark;
+  } catch (err) {
+    row.totalError = err.message;
+  }
+  if (wantDr && ahrefsKey && meta.domain) {
     try {
-      const pv = await fetchPageviews(site, token, start, end);
-      total = pv.total;
-      recent2h = pv.recent2h;
-      spark = pv.spark;
+      row.dr = await fetchDomainRating(meta.domain, ahrefsKey);
     } catch (err) {
-      totalError = err.message;
+      row.drError = err.message;
     }
+  }
+  return row;
+}
 
-    let dr = null;
-    let drError = null;
-    if (domain && ahrefsKey) {
-      try {
-        dr = await fetchDomainRating(domain, ahrefsKey);
-      } catch (err) {
-        drError = err.message;
-      }
-    }
-
-    return {
-      site,
-      domain,
-      offline: !domain,
-      total,
-      recent2h,
-      spark,
-      totalError,
-      dr,
-      drError,
-    };
-  });
-
+function jsonOk(body, cacheInfo) {
+  const cache = require("../../lib/cache");
   return {
     statusCode: 200,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-    body: JSON.stringify({ range: OVERVIEW_DAYS, rows }),
+    headers: cacheInfo ? cache.cacheHeaders(cacheInfo) : {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+    body: JSON.stringify(cacheInfo ? cache.withCacheMeta(body, cacheInfo) : body),
   };
+}
+
+function jsonErr(status, message) {
+  return {
+    statusCode: status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+    body: JSON.stringify({ error: message }),
+  };
+}
+
+exports.handler = async (event) => {
+  const cache = require("../../lib/cache");
+  const params = (event && event.queryStringParameters) || {};
+  const headers = (event && event.headers) || {};
+  const force = cache.wantsFresh(params, headers);
+  const wantDr = params.dr === "1" || params.dr === "true";
+  const wantFull = params.full === "1" || params.full === "true";
+  const oneSite = (params.site || "").trim();
+  const ahrefsKey = process.env.AHREFS_API_KEY;
+  const hourBucket = new Date().toISOString().slice(0, 13);
+
+  let resolved;
+  try {
+    resolved = await resolveSites(process.env, { force: force && !oneSite });
+  } catch (err) {
+    return jsonErr(500, err.message);
+  }
+
+  const { start, end } = rangeWindow();
+
+  // Fast path: site list only (what the board boots with).
+  if (!oneSite && !wantFull) {
+    const rows = resolved.sites.map(emptyRow);
+    return jsonOk({
+      range: OVERVIEW_DAYS,
+      siteCount: rows.length,
+      sitesSource: resolved.source,
+      listOnly: true,
+      withDr: false,
+      fetchedAt: new Date().toISOString(),
+      rows,
+    });
+  }
+
+  // One site metrics — used to fill the table progressively.
+  if (oneSite) {
+    const meta = resolved.sites.find((s) => s.code === oneSite);
+    if (!meta) return jsonErr(400, "Unknown site: " + oneSite);
+
+    const cacheKey =
+      "overview:site:" + oneSite + ":" + hourBucket + (wantDr ? ":dr" : "");
+    try {
+      const cached = await cache.wrap(
+        cacheKey,
+        cache.TTL.overview,
+        () => enrichRow(meta, resolved.token, start, end, ahrefsKey, wantDr),
+        { force }
+      );
+      return jsonOk(
+        {
+          range: OVERVIEW_DAYS,
+          site: oneSite,
+          withDr: wantDr,
+          fetchedAt: new Date().toISOString(),
+          row: cached.value,
+        },
+        cached
+      );
+    } catch (err) {
+      return jsonErr(err.status === 429 ? 429 : 500, err.message);
+    }
+  }
+
+  // Full fan-out (Refresh / explicit). Sequential to respect rate limits.
+  try {
+    const cached = await cache.wrap(
+      "overview:full:" + hourBucket + (wantDr ? ":dr" : ""),
+      cache.TTL.overview,
+      async () => {
+        const rows = [];
+        for (const meta of resolved.sites) {
+          rows.push(await enrichRow(meta, resolved.token, start, end, ahrefsKey, wantDr));
+          await new Promise((r) => setTimeout(r, 280));
+        }
+        const okCount = rows.filter((r) => r.total !== null).length;
+        if (okCount === 0) {
+          const err = new Error(
+            "GoatCounter rate limited or unreachable. Wait a minute and retry."
+          );
+          err.status = 429;
+          throw err;
+        }
+        return {
+          range: OVERVIEW_DAYS,
+          siteCount: rows.length,
+          sitesOk: okCount,
+          sitesSource: resolved.source,
+          listOnly: false,
+          withDr: wantDr,
+          fetchedAt: new Date().toISOString(),
+          rows,
+        };
+      },
+      { force }
+    );
+    return jsonOk(cached.value, cached);
+  } catch (err) {
+    return jsonErr(err.status === 429 ? 429 : 500, err.message);
+  }
 };
