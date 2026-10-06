@@ -27,6 +27,10 @@
     overviewMeta: document.getElementById("overview-meta"),
     overviewOverlay: document.getElementById("overview-overlay"),
     refreshBtn: document.getElementById("refresh-btn"),
+    sumOnline: document.getElementById("sum-online"),
+    sumSessions: document.getElementById("sum-sessions"),
+    sumSites: document.getElementById("sum-sites"),
+    sumDr: document.getElementById("sum-dr"),
     statTotal: document.getElementById("stat-total"),
     statAvg: document.getElementById("stat-avg"),
     statTop: document.getElementById("stat-top"),
@@ -750,7 +754,7 @@
       return typeof row.recent2h === "number" ? row.recent2h : null;
     }
     if (key === "rating") {
-      if (row.offline || row.drError) return null;
+      if (row.drError) return null;
       return typeof row.dr === "number" ? row.dr : null;
     }
     return null;
@@ -799,7 +803,30 @@
     });
   }
 
+  // Totals across every site row; values fill in as rows load.
+  function renderSummary() {
+    var rows = state.overviewRows || [];
+    var online = 0, sessions = 0, loaded = 0, drSum = 0, drCount = 0;
+    rows.forEach(function (r) {
+      if (typeof r.recent2h === "number") online += r.recent2h;
+      if (typeof r.total === "number") {
+        sessions += r.total;
+        loaded++;
+      }
+      if (typeof r.dr === "number") {
+        drSum += r.dr;
+        drCount++;
+      }
+    });
+    var none = "—";
+    els.sumSites.textContent = rows.length ? rows.length.toLocaleString() : none;
+    els.sumOnline.textContent = loaded ? online.toLocaleString() : none;
+    els.sumSessions.textContent = loaded ? sessions.toLocaleString() : none;
+    els.sumDr.textContent = drCount ? (drSum / drCount).toFixed(1) : none;
+  }
+
   function renderOverview() {
+    renderSummary();
     var rows = sortedOverviewRows();
     els.overviewBody.innerHTML = "";
     updateSortButtons();
@@ -863,10 +890,7 @@
       el.appendChild(pageviewsCell);
 
       var drCell = document.createElement("div");
-      if (row.offline) {
-        drCell.className = "overview-offline";
-        drCell.textContent = "Offline";
-      } else if (row.drError) {
+      if (row.drError) {
         drCell.className = "overview-error";
         drCell.textContent = "Error";
       } else if (row.dr === null || row.dr === undefined) {
@@ -875,6 +899,12 @@
       } else {
         drCell.className = "overview-value";
         drCell.textContent = Math.round(row.dr);
+      }
+      if (row.offline) {
+        var offlineTag = document.createElement("span");
+        offlineTag.className = "overview-offline-tag";
+        offlineTag.textContent = "Offline";
+        drCell.appendChild(offlineTag);
       }
       el.appendChild(drCell);
 
@@ -987,7 +1017,7 @@
           mergeOverviewRow({
             site: code,
             domain: prev.domain || null,
-            offline: !prev.domain,
+            offline: prev.domain ? prev.offline : true,
             total: null,
             recent2h: null,
             spark: null,

@@ -85,17 +85,60 @@ async function fetchDomainRating(domain, ahrefsKey) {
     });
     if (!res.ok) throw new Error("Ahrefs " + domain + " (" + res.status + ")");
     const data = await res.json();
-    return data.domain_rating ? data.domain_rating.domain_rating : null;
+    const dr = data.domain_rating ? data.domain_rating.domain_rating : null;
+    // Throw instead of returning null so an empty answer is never cached.
+    if (typeof dr !== "number") throw new Error("Ahrefs " + domain + " (no rating)");
+    return dr;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Is the website itself reachable? Independent of DR — Ahrefs scores the
+// domain's backlinks whether or not anything is served there right now.
+async function respondsAt(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      cache: "no-store",
+      signal: controller.signal,
+      headers: { "User-Agent": "TrackingBoard uptime check" },
+    });
+    // Any non-5xx answer means a server is there (403/404 still count).
+    return res.status < 500;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Falls back to plain HTTP so a site with a broken certificate but a
+// working server still counts as online.
+async function checkOnline(domain) {
+  if (await respondsAt("https://" + domain + "/")) return true;
+  return respondsAt("http://" + domain + "/");
+}
+
+// Cached per domain for 12h (CACHE_TTL_DR_MS), even across Refresh, so the
+// Ahrefs quota is spent at most twice a day per site. Errors are not cached.
+async function cachedDomainRating(domain, ahrefsKey) {
+  const cache = require("../../lib/cache");
+  const { value } = await cache.wrap("dr:" + domain, cache.TTL.dr, () =>
+    fetchDomainRating(domain, ahrefsKey)
+  );
+  return value;
 }
 
 function emptyRow(meta) {
   return {
     site: meta.code,
     domain: meta.domain,
-    offline: !meta.domain,
+    // null = not checked yet; true once the site is unreachable (or has no domain).
+    offline: meta.domain ? null : true,
     total: null,
     recent2h: null,
     spark: null,
@@ -117,12 +160,21 @@ async function enrichRow(meta, token, start, end, ahrefsKey, wantDr) {
   } catch (err) {
     row.totalError = err.message;
   }
-  if (wantDr && ahrefsKey && meta.domain) {
-    try {
-      row.dr = await fetchDomainRating(meta.domain, ahrefsKey);
-    } catch (err) {
-      row.drError = err.message;
+  if (meta.domain) {
+    const [drResult, online] = await Promise.all([
+      wantDr && ahrefsKey
+        ? cachedDomainRating(meta.domain, ahrefsKey).then(
+            (dr) => ({ dr }),
+            (err) => ({ error: err.message })
+          )
+        : Promise.resolve(null),
+      checkOnline(meta.domain),
+    ]);
+    if (drResult) {
+      row.dr = drResult.error ? null : drResult.dr;
+      row.drError = drResult.error || null;
     }
+    row.offline = !online;
   }
   return row;
 }

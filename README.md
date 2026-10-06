@@ -34,7 +34,8 @@ Copy `.env.example` to `.env` for local / Render. Required keys:
   token step above) — no code changes.
 - `GOATCOUNTER_TOKEN` — the API token from step 1
 - `GOATCOUNTER_SITE_DOMAINS` — maps a site code to its real domain for Ahrefs
-  lookups, e.g. `venabustallenno:venabustallen.no`. A site left out (no live
+  lookups, e.g. `venabustallenno:venabustallen.no`. Optional: a code ending in
+  a known TLD is inferred (`tryggehandelno` → `tryggehandel.no`). Anything else (no live
   domain yet) shows as "Offline" in the Domain Rating column instead of
   attempting a lookup.
 - `AHREFS_API_KEY` — the key from step 2
